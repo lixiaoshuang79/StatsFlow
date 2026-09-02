@@ -1,4 +1,4 @@
-# stats-netbar-fusion
+# StatsFlow
 
 基于 [exelban/Stats](https://github.com/exelban/stats) 的分支版本，为网络模块加入 NetBar 风格的按应用网络流量展示。macOS 菜单栏系统监控，其余模块（CPU、内存、磁盘、电池等）保持上游行为不变。
 
@@ -48,8 +48,8 @@ Releases 页面提供已构建的 `Stats.app.zip`，解压后拖入「应用程�
 要求：macOS 与 Xcode。本分支用 Xcode 26.6（build 17F113）验证，Apple Silicon 与 Intel 均支持。
 
 ```bash
-git clone git@github.com:lixiaoshuang79/stats-netbar-fusion.git
-cd stats-netbar-fusion
+git clone git@github.com:lixiaoshuang79/StatsFlow.git
+cd StatsFlow
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
   -project Stats.xcodeproj -scheme Stats -configuration Release \
   -destination 'platform=OS X,arch=arm64' \
