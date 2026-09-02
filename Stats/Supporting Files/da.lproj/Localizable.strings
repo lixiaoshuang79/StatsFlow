@@ -515,10 +515,17 @@
 "Teal" = "Blågrøn"; // gemma4:31b
 "Indigo" = "Indigo";
 "Install fan helper" = "Tillad blæserkontrol";
+"Hide system processes" = "Hide system processes";
+"Summary" = "Summary";
+"processes" = "processes";
+"No network activity" = "No network activity";
 "Uninstall fan helper" = "Afinstaller blæserkontrol";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
 "Fan value" = "Blæserværdi";
 "Turn off fan" = "Slå blæseren fra"; // translategemma:4b
+"This application's traffic is relayed through a proxy or VPN" = "This application's traffic is relayed through a proxy or VPN";
 "You are going to turn off the fan. This is not recommended action that can damage your mac, are you sure you want to do that?" = "Du er ved at slukke for blæseren. Dette er ikke en anbefalet handling, da det kan skade din Mac. Er du sikker på du vil fortsætte?";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
 "Sensor threshold" = "Sensorgrænse"; // translategemma:4b
 "Left fan" = "Venstre"; // translategemma:4b
 "Right fan" = "Korrekt"; // translategemma:4b

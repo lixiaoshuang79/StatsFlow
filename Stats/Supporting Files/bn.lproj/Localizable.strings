@@ -515,10 +515,17 @@
 "Teal" = "ফিরোজা"; // gemma4:31b
 "Indigo" = "ইন্ডিগো"; // gemma4:31b
 "Battery remaining to full charge" = "সম্পূর্ণ চার্জ হতে %0% বাকি";
+"Hide system processes" = "Hide system processes";
+"Summary" = "Summary";
+"processes" = "processes";
+"No network activity" = "No network activity";
 "Percentage" = "শতকরা";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
 "Percentage and time" = "শতকরা এবং সময়";
 "Time and percentage" = "সময় এবং শতকরা";
+"This application's traffic is relayed through a proxy or VPN" = "This application's traffic is relayed through a proxy or VPN";
 "Time format" = "সময়ের বিন্যাস";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
 "Hide additional information when full" = "সম্পূর্ণ হলে অতিরিক্ত তথ্য লুকান";
 "Last charge" = "শেষ চার্জ";
 "Capacity" = "ধারণক্ষমতা";

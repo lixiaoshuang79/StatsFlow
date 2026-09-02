@@ -515,10 +515,17 @@
 "Teal" = "Tyrkysová"; // gemma4:31b
 "Indigo" = "Indigo";
 "Install fan helper" = "Inštalácia pomocníka pre ventilátor";
+"Hide system processes" = "Hide system processes";
+"Summary" = "Summary";
+"processes" = "processes";
+"No network activity" = "No network activity";
 "Uninstall fan helper" = "Odinštalácia pomocníka ventilátora";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
 "Fan value" = "Otáčky ventilátora";
 "Turn off fan" = "Vypnite ventilátor"; // translategemma:4b
+"This application's traffic is relayed through a proxy or VPN" = "This application's traffic is relayed through a proxy or VPN";
 "You are going to turn off the fan. This is not recommended action that can damage your mac, are you sure you want to do that?" = "Chystáte sa vypnúť ventilátor. Toto nie je odporúčaná akcia, ktorá môže poškodiť váš Mac. Ste si istí, že to chcete urobiť?"; // translategemma:4b
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
 "Sensor threshold" = "Hranica detekčného senzora"; // translategemma:4b
 "Left fan" = "Vľavo"; // translategemma:4b
 "Right fan" = "Správne"; // translategemma:4b

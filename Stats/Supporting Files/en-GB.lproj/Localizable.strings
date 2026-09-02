@@ -514,3 +514,15 @@
 "Pink" = "Pink";
 "Teal" = "Teal";
 "Indigo" = "Indigo";
+"Hide system processes" = "Hide system processes";
+"Hide system processes" = "Hide system processes";
+"Summary" = "Summary";
+"processes" = "processes";
+"No network activity" = "No network activity";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
+"This application's traffic is relayed through a proxy or VPN" = "This application's traffic is relayed through a proxy or VPN";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
+"This application's traffic is relayed through a proxy or VPN" = "This application's traffic is relayed through a proxy or VPN";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
+"The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application." = "The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.";
