@@ -1,0 +1,1042 @@
+//
+//  popup.swift
+//  Net
+//
+//  Created by Serhiy Mytrovtsiy on 24/05/2020.
+//  Using Swift 5.0.
+//  Running on macOS 10.15.
+//
+//  Copyright © 2020 Serhiy Mytrovtsiy. All rights reserved.
+//
+
+import Cocoa
+import Kit
+
+// swiftlint:disable:next type_body_length
+internal class Popup: PopupWrapper {
+    private var uploadContainerView: NSView? = nil
+    private var uploadView: NSView? = nil
+    private var uploadValue: Int64 = 0
+    private var uploadValueField: NSTextField? = nil
+    private var uploadUnitField: NSTextField? = nil
+    private var uploadStateView: ColorView? = nil
+    
+    private var downloadContainerView: NSView? = nil
+    private var downloadView: NSView? = nil
+    private var downloadValue: Int64 = 0
+    private var downloadValueField: NSTextField? = nil
+    private var downloadUnitField: NSTextField? = nil
+    private var downloadStateView: ColorView? = nil
+    
+    private var downloadColorView: NSView? = nil
+    private var uploadColorView: NSView? = nil
+    
+    private var totalUploadLabel: LabelField? = nil
+    private var totalUploadField: ValueField? = nil
+    private var totalDownloadLabel: LabelField? = nil
+    private var totalDownloadField: ValueField? = nil
+    private var statusField: StatusBadgeView? = nil
+    private var connectivityField: StatusBadgeView? = nil
+    private var latencyField: ValueField? = nil
+    private var jitterField: ValueField? = nil
+    
+    private var interfaceView: NSStackView? = nil
+    private var interfaceField: ValueField? = nil
+    private var interfaceStatusField: StatusBadgeView? = nil
+    private var macAddressField: ValueField? = nil
+    private var ssidField: ValueField? = nil
+    private var standardField: ValueField? = nil
+    private var channelField: ValueField? = nil
+    private var ssidView: NSView? = nil
+    
+    private var interfaceDetailsState: Bool = false
+    private var standardView: NSView? = nil
+    private var channelView: NSView? = nil
+    private var interfaceSpeedView: NSView? = nil
+    private var interfaceSpeedField: ValueField? = nil
+    private var dnsServersView: NSView? = nil
+    private var dnsServersField: ValueField? = nil
+    
+    private var addressView: NSStackView? = nil
+    private var localIPField: ValueField? = nil
+    private var publicIPv4Field: ValueField? = nil
+    private var publicIPv6Field: ValueField? = nil
+    private var publicIPv4View: NSView? = nil
+    private var publicIPv6View: NSView? = nil
+    private var publicIPState: Bool = true
+    private var emojiCCState: Bool = true
+    
+    private var processesView: NSView? = nil
+    private var processes: ProcessesView? = nil
+    
+    // Exponential smoothing of the displayed numbers, so the popup glides
+    // instead of flickering on every 1 s reader tick.
+    private let smoothingAlpha: Double = 0.4
+    private var smoothedProcessTraffic: [Int: (download: Double, upload: Double)] = [:]
+    private var hasRenderedUsage: Bool = false
+    
+    private var chart: NetworkChartView? = nil
+    private var reverseOrderState: Bool = false
+    private var chartHistory: Int = 180
+    private var chartScale: Scale = .none
+    private var chartFixedScale: Int = 12
+    private var chartFixedScaleSize: SizeUnit = .MB
+    private var chartPrefSection: PreferencesSection? = nil
+    
+    private var processesInitialized: Bool = false
+    
+    private let usageCache = PopupCache<Network_Usage>()
+    private let connectivityCache = PopupCache<Network_Connectivity?>()
+    
+    private var lastReset: Date = Date()
+    private var latency: [Double] = []
+    private var jitter: [Double] = []
+    
+    private var base: DataSizeBase {
+        DataSizeBase(rawValue: Store.shared.string(key: "\(self.title)_base", defaultValue: "byte")) ?? .byte
+    }
+    private var speedUnit: String {
+        networkSpeedUnit(from: Store.shared.string(key: "\(self.title)_speedUnit", defaultValue: NetworkSpeedUnitAuto)).key
+    }
+    private var numberOfProcesses: Int {
+        Store.shared.int(key: "\(self.title)_processes", defaultValue: 8)
+    }
+    private var processesHeight: CGFloat {
+        (22*CGFloat(self.numberOfProcesses)) + (self.numberOfProcesses == 0 ? 0 : Constants.Popup.separatorHeight)
+    }
+    private var processSumField: LabelField? = nil
+    
+    private var detailsStack: NSStackView? = nil
+    
+    private var downloadColorState: SColor = .secondBlue
+    private var downloadColor: NSColor {
+        var value = NSColor.systemBlue
+        if let color = self.downloadColorState.additional as? NSColor {
+            value = color
+        }
+        return value
+    }
+    private var uploadColorState: SColor = .secondRed
+    private var uploadColor: NSColor {
+        var value = NSColor.systemRed
+        if let color = self.uploadColorState.additional as? NSColor {
+            value = color
+        }
+        return value
+    }
+    
+    public init(_ module: ModuleType) {
+        super.init(module, frame: NSRect(x: 0, y: 0, width: Constants.Popup.width * 1.5, height: 0))
+        
+        self.spacing = 0
+        self.orientation = .vertical
+        
+        self.downloadColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_downloadColor", defaultValue: self.downloadColorState.key))
+        self.uploadColorState = SColor.fromString(Store.shared.string(key: "\(self.title)_uploadColor", defaultValue: self.uploadColorState.key))
+        self.reverseOrderState = Store.shared.bool(key: "\(self.title)_reverseOrder", defaultValue: self.reverseOrderState)
+        self.chartHistory = Store.shared.int(key: "\(self.title)_chartHistory", defaultValue: self.chartHistory)
+        self.chartScale = Scale.fromString(Store.shared.string(key: "\(self.title)_chartScale", defaultValue: self.chartScale.key))
+        self.chartFixedScale = Store.shared.int(key: "\(self.title)_chartFixedScale", defaultValue: self.chartFixedScale)
+        self.chartFixedScaleSize = SizeUnit.fromString(Store.shared.string(key: "\(self.title)_chartFixedScaleSize", defaultValue: self.chartFixedScaleSize.key))
+        self.publicIPState = Store.shared.bool(key: "\(self.title)_publicIP", defaultValue: self.publicIPState)
+        self.interfaceDetailsState = Store.shared.bool(key: "\(self.title)_interfaceDetails", defaultValue: self.interfaceDetailsState)
+        self.emojiCCState = Store.shared.bool(key: "\(self.title)_emojiCC", defaultValue: self.emojiCCState)
+        
+        self.addArrangedSubview(self.initDashboard())
+        self.addArrangedSubview(self.initProcesses())
+        self.addArrangedSubview(self.initDetailsSection())
+        
+        if !self.publicIPState {
+            self.addressView?.removeFromSuperview()
+        }
+        
+        self.recalculateHeight()
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(self.resetTotalNetworkUsageCallback), name: .resetTotalNetworkUsage, object: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self, name: .resetTotalNetworkUsage, object: nil)
+    }
+    
+    private func recalculateHeight() {
+        var h: CGFloat = 0
+        self.arrangedSubviews.forEach { v in
+            h += v.fittingSize.height
+        }
+        if self.frame.size.height != h {
+            self.setFrameSize(NSSize(width: self.frame.width, height: h))
+            self.sizeCallback?(self.frame.size)
+        }
+    }
+    
+    // MARK: - views
+    
+    // Always-visible details: usage history chart, totals/latency, interface
+    // and address, stacked as one flat column.
+    private func initDetailsSection() -> NSView {
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: self.frame.width, height: 0))
+        stack.orientation = .vertical
+        stack.spacing = 0
+        stack.addArrangedSubview(self.initChart(width: self.frame.width, chartHeight: 64))
+        stack.addArrangedSubview(self.initDetails(width: self.frame.width))
+        stack.addArrangedSubview(self.initInterface(width: self.frame.width))
+        stack.addArrangedSubview(self.initAddress(width: self.frame.width))
+        self.detailsStack = stack
+        return stack
+    }
+    
+    private func initDashboard() -> NSView {
+        let view: NSView = NSView(frame: NSRect(x: 0, y: 0, width: self.frame.width, height: 90))
+        view.heightAnchor.constraint(equalToConstant: view.bounds.height).isActive = true
+        
+        let leftPart: NSView = NSView(frame: NSRect(x: isRTL ? view.frame.width / 2 : 0, y: 0, width: view.frame.width / 2, height: view.frame.height))
+        let downloadFields = self.topValueView(leftPart, title: localizedString("Downloading"), color: self.downloadColor)
+        self.downloadContainerView = leftPart
+        self.downloadView = downloadFields.0
+        self.downloadValueField = downloadFields.1
+        self.downloadUnitField = downloadFields.2
+        self.downloadStateView = downloadFields.3
+        
+        let rightPart: NSView = NSView(frame: NSRect(x: isRTL ? 0 : view.frame.width / 2, y: 0, width: view.frame.width / 2, height: view.frame.height))
+        let uploadFields = self.topValueView(rightPart, title: localizedString("Uploading"), color: self.uploadColor)
+        self.uploadContainerView = rightPart
+        self.uploadView = uploadFields.0
+        self.uploadValueField = uploadFields.1
+        self.uploadUnitField = uploadFields.2
+        self.uploadStateView = uploadFields.3
+        
+        view.addSubview(leftPart)
+        view.addSubview(rightPart)
+        
+        let divider: NSView = NSView(frame: NSRect(x: view.frame.width / 2, y: 20, width: 1, height: view.frame.height - 40))
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.6).cgColor
+        view.addSubview(divider)
+        
+        return view
+    }
+    
+    private func initChart(width: CGFloat, chartHeight: CGFloat = 90) -> NSView {
+        let view: NSView = NSView(frame: NSRect(x: 0, y: 0, width: width, height: chartHeight + Constants.Popup.separatorHeight))
+        view.heightAnchor.constraint(equalToConstant: view.bounds.height).isActive = true
+        
+        let separator = separatorView(localizedString("Usage history"), origin: NSPoint(x: 0, y: chartHeight), width: width)
+        let container: NSView = NSView(frame: NSRect(x: 0, y: 0, width: width, height: separator.frame.origin.y))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.lightGray.withAlphaComponent(0.1).cgColor
+        container.layer?.cornerRadius = Constants.Popup.radius
+        
+        let chart = NetworkChartView(
+            frame: NSRect(x: 0, y: 1, width: container.frame.width, height: container.frame.height - 2),
+            num: self.chartHistory, reversedOrder: self.reverseOrderState, outColor: self.uploadColor, inColor: self.downloadColor,
+            scale: self.chartScale,
+            fixedScale: Double(self.chartFixedScaleSize.toBytes(self.chartFixedScale))
+        )
+        chart.setBase(self.base)
+        chart.setSpeedUnit(self.speedUnit)
+        container.addSubview(chart)
+        self.chart = chart
+        
+        view.addSubview(separator)
+        view.addSubview(container)
+        
+        return view
+    }
+    
+    private func initDetails(width: CGFloat) -> NSView {
+        let view = NSStackView(frame: NSRect(x: 0, y: 0, width: width, height: 0))
+        view.orientation = .vertical
+        view.spacing = 0
+        
+        view.addArrangedSubview(SeparatorView(
+            label: localizedString("Summary"),
+            button: PopupButton(toolTip: localizedString("Reset"), icon: "arrow.clockwise") { [weak self] in
+                self?.resetTotalNetworkUsage()
+            }
+        ))
+        
+        let totalUpload = popupWithColorRow(view, color: self.uploadColor, title: "\(localizedString("Total upload")):", value: "0")
+        let totalDownload = popupWithColorRow(view, color: self.downloadColor, title: "\(localizedString("Total download")):", value: "0")
+        
+        self.uploadColorView = totalUpload.0
+        self.totalUploadLabel = totalUpload.1
+        self.totalUploadField = totalUpload.2
+        self.totalUploadField?.alignment = .left
+        
+        self.downloadColorView = totalDownload.0
+        self.totalDownloadLabel = totalDownload.1
+        self.totalDownloadField = totalDownload.2
+        self.totalDownloadField?.alignment = .left
+        
+        self.statusField = popupInlineBadgeRow(view, title: "\(localizedString("Status")):").1
+        self.connectivityField = popupInlineBadgeRow(view, title: "\(localizedString("Internet connection")):").1
+        self.latencyField = popupInlineRow(view, title: "\(localizedString("Latency")):", value: "0 ms").1
+        self.jitterField = popupInlineRow(view, title: "\(localizedString("Jitter")):", value: "0 ms").1
+        
+        return view
+    }
+    
+    private func initInterface(width: CGFloat) -> NSView {
+        let view = NSStackView(frame: NSRect(x: 0, y: 0, width: width, height: 0))
+        view.orientation = .vertical
+        view.spacing = 0
+        
+        view.addArrangedSubview(SeparatorView(
+            label: localizedString("Interface"),
+            button: PopupButton(toolTip: localizedString("Details"), state: interfaceDetailsState) { [weak self] in
+                self?.toggleInterfaceDetails()
+            }
+        ))
+        
+        self.interfaceField = popupInlineRow(view, title: "\(localizedString("Interface")):", value: localizedString("Unknown")).1
+        self.interfaceStatusField = popupInlineBadgeRow(view, title: "\(localizedString("Status")):").1
+        self.macAddressField = popupInlineRow(view, title: "\(localizedString("Physical address")):", value: localizedString("Unknown")).1
+        self.macAddressField?.isSelectable = true
+        
+        let ssid = popupInlineRow(view, title: "\(localizedString("Network")):", value: localizedString("Unknown"))
+        let standard = popupInlineRow(view, title: "\(localizedString("Standard")):", value: localizedString("Unavailable"))
+        let channel = popupInlineRow(view, title: "\(localizedString("Channel")):", value: localizedString("Unavailable"))
+        let speed = popupInlineRow(view, title: "\(localizedString("Speed")):", value: localizedString("Unknown"))
+        
+        self.ssidField = ssid.1
+        self.standardField = standard.1
+        self.channelField = channel.1
+        self.interfaceSpeedField = speed.1
+        
+        self.ssidView = ssid.2
+        self.standardView = standard.2
+        self.channelView = channel.2
+        self.interfaceSpeedView = speed.2
+        
+        if !self.interfaceDetailsState {
+            self.standardView?.removeFromSuperview()
+            self.channelView?.removeFromSuperview()
+            self.interfaceSpeedView?.removeFromSuperview()
+        }
+        
+        self.interfaceView = view
+        return view
+    }
+    
+    private func initAddress(width: CGFloat) -> NSView {
+        let view = NSStackView(frame: NSRect(x: 0, y: 0, width: width, height: 0))
+        view.orientation = .vertical
+        view.spacing = 0
+        
+        view.addArrangedSubview(SeparatorView(
+            label: localizedString("Address"),
+            button: PopupButton(toolTip: localizedString("Refresh"), icon: "arrow.clockwise") { [weak self] in
+                self?.refreshPublicIP()
+            }
+        ))
+        
+        self.localIPField = popupInlineRow(view, title: "\(localizedString("Local IP")):", value: localizedString("Unknown")).1
+        
+        let ipV4 = popupInlineRow(view, title: "\(localizedString("Public IP")):", value: localizedString("Unknown"))
+        let ipV6 = popupInlineRow(view, title: "\(localizedString("Public IP")):", value: localizedString("Unknown"))
+        
+        self.publicIPv4Field = ipV4.1
+        self.publicIPv6Field = ipV6.1
+        self.publicIPv4View = ipV4.2
+        self.publicIPv6View = ipV6.2
+        
+        self.localIPField?.isSelectable = true
+        self.publicIPv4Field?.isSelectable = true
+        self.publicIPv6Field?.isSelectable = true
+        
+        if let valueView = self.publicIPv6Field {
+            valueView.font = NSFont.systemFont(ofSize: 7, weight: .semibold)
+            valueView.setFrameOrigin(NSPoint(x: valueView.frame.origin.x, y: -1))
+        }
+        
+        ipV4.2.removeFromSuperview()
+        ipV6.2.removeFromSuperview()
+        
+        self.addressView = view
+        return view
+    }
+    
+    private func initProcesses() -> NSView {
+        if self.numberOfProcesses == 0 {
+            let v = NSView()
+            self.processesView = v
+            return v
+        }
+        
+        let view: NSView = NSView(frame: NSRect(x: 0, y: 0, width: self.frame.width, height: self.processesHeight))
+        view.heightAnchor.constraint(equalToConstant: view.bounds.height).isActive = true
+        let header: NSView = self.generateProcessesHeader(origin: NSPoint(x: 0, y: self.processesHeight-Constants.Popup.separatorHeight), width: self.frame.width)
+        let container: ProcessesView = ProcessesView(
+            frame: NSRect(x: 0, y: 0, width: self.frame.width, height: header.frame.origin.y),
+            values: [(localizedString("Downloading"), self.downloadColor), (localizedString("Uploading"), self.uploadColor)],
+            n: self.numberOfProcesses,
+            header: false
+        )
+        self.processes = container
+        view.addSubview(header)
+        view.addSubview(container)
+        self.processesView = view
+        return view
+    }
+    
+    // NetBar-inspired: show the sum of the listed applications' traffic in the
+    // header, so it can be compared against the interface total at the top of
+    // the popup (they differ: system, kernel and proxy/VPN traffic is not
+    // attributed to any application).
+    private func generateProcessesHeader(origin: NSPoint, width: CGFloat) -> NSView {
+        let view: NSView = NSView(frame: NSRect(x: origin.x, y: origin.y, width: width, height: Constants.Popup.separatorHeight))
+        
+        let labelView: NSTextField = NSTextField(labelWithString: "")
+        labelView.translatesAutoresizingMaskIntoConstraints = false
+        labelView.alignment = .center
+        labelView.attributedStringValue = NSAttributedString(string: localizedString("Top processes").uppercased(), attributes: [
+            .font: NSFont.systemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: NSColor.tertiaryLabelColor,
+            .kern: 1.0
+        ])
+        labelView.setContentHuggingPriority(.required, for: .horizontal)
+        labelView.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
+        let sumField: LabelField = LabelField(frame: NSRect(x: 0, y: 0, width: 150, height: 16))
+        sumField.translatesAutoresizingMaskIntoConstraints = false
+        sumField.alignment = .right
+        sumField.toolTip = localizedString("The sum of the listed applications' traffic. It may be lower than the total at the top because system and kernel traffic is not attributed to any application.")
+        self.processSumField = sumField
+        
+        let leftLine: NSView = NSView()
+        leftLine.translatesAutoresizingMaskIntoConstraints = false
+        leftLine.wantsLayer = true
+        leftLine.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        
+        let rightLine: NSView = NSView()
+        rightLine.translatesAutoresizingMaskIntoConstraints = false
+        rightLine.wantsLayer = true
+        rightLine.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        
+        view.addSubview(leftLine)
+        view.addSubview(labelView)
+        view.addSubview(rightLine)
+        view.addSubview(sumField)
+        
+        let gap: CGFloat = 8
+        NSLayoutConstraint.activate([
+            labelView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            labelView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            
+            leftLine.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            leftLine.trailingAnchor.constraint(equalTo: labelView.leadingAnchor, constant: -gap),
+            leftLine.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            leftLine.heightAnchor.constraint(equalToConstant: 1),
+            
+            rightLine.leadingAnchor.constraint(equalTo: labelView.trailingAnchor, constant: gap),
+            rightLine.trailingAnchor.constraint(equalTo: sumField.leadingAnchor, constant: -gap),
+            rightLine.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            rightLine.heightAnchor.constraint(equalToConstant: 1),
+            
+            sumField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            sumField.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            sumField.widthAnchor.constraint(greaterThanOrEqualToConstant: 120)
+        ])
+        
+        return view
+    }
+    
+    // MARK: - callbacks
+    
+    public override func appear() {
+        self.replay(self.usageCache, render: self.renderUsage)
+        self.replay(self.connectivityCache, render: self.renderConnectivity)
+    }
+    
+    public func numberOfProcessesUpdated() {
+        if self.processes?.count == self.numberOfProcesses { return }
+        
+        DispatchQueue.main.async(execute: {
+            self.processesView?.removeFromSuperview()
+            self.processesView = nil
+            self.processes = nil
+            self.insertArrangedSubview(self.initProcesses(), at: 1)
+            self.processesInitialized = false
+            self.recalculateHeight()
+        })
+    }
+    
+    public func usageCallback(_ value: Network_Usage) {
+        self.apply(value, to: self.usageCache, render: self.renderUsage)
+        
+        if let chart = self.chart {
+            chart.setBase(self.base)
+            chart.setSpeedUnit(self.speedUnit)
+            chart.addValue(upload: Double(value.bandwidth.upload), download: Double(value.bandwidth.download))
+        }
+    }
+    
+    private func renderUsage(_ value: Network_Usage) {
+        var resized = false
+        let alpha = self.smoothingAlpha
+        if self.hasRenderedUsage {
+            self.uploadValue = Int64((Double(self.uploadValue) * (1 - alpha) + Double(value.bandwidth.upload) * alpha).rounded())
+            self.downloadValue = Int64((Double(self.downloadValue) * (1 - alpha) + Double(value.bandwidth.download) * alpha).rounded())
+        } else {
+            self.uploadValue = value.bandwidth.upload
+            self.downloadValue = value.bandwidth.download
+            self.hasRenderedUsage = true
+        }
+        self.setUploadDownloadFields()
+        
+        self.totalUploadField?.stringValue = Units(bytes: value.total.upload).getReadableMemory()
+        self.totalDownloadField?.stringValue = Units(bytes: value.total.download).getReadableMemory()
+        
+        let form = DateComponentsFormatter()
+        form.maximumUnitCount = 2
+        form.unitsStyle = .full
+        form.allowedUnits = [.day, .hour, .minute]
+        
+        if let duration = form.string(from: self.lastReset, to: Date()) {
+            self.totalUploadLabel?.toolTip = localizedString("Last reset", duration)
+            self.totalDownloadLabel?.toolTip = localizedString("Last reset", duration)
+        }
+        
+        if let interface = value.interface {
+            self.interfaceField?.stringValue = "\(interface.displayName) (\(interface.BSDName)"
+            if let cc = value.wifiDetails.countryCode {
+                self.interfaceField?.stringValue += ", \(cc)"
+            }
+            self.interfaceField?.stringValue += ")"
+            self.interfaceStatusField?.setStatus(interface.status)
+            self.macAddressField?.stringValue = interface.address
+            self.interfaceSpeedField?.stringValue = "\(Int(interface.transmitRate.rounded()))Mbps"
+        } else {
+            self.interfaceField?.stringValue = localizedString("Unknown")
+            self.interfaceStatusField?.setStatus(nil)
+            self.macAddressField?.stringValue = localizedString("Unknown")
+            self.interfaceSpeedField?.stringValue = localizedString("Unknown")
+        }
+        
+        if value.connectionType == .wifi {
+            if let view = self.ssidView, view.superview == nil && value.wifiDetails.ssid != nil {
+                self.interfaceView?.addArrangedSubview(view)
+                resized = true
+            }
+            if self.interfaceDetailsState, let view = self.standardView, view.superview == nil && value.wifiDetails.standard != nil {
+                self.interfaceView?.addArrangedSubview(view)
+                resized = true
+            }
+            if self.interfaceDetailsState, let view = self.channelView, view.superview == nil && value.wifiDetails.channel != nil {
+                self.interfaceView?.addArrangedSubview(view)
+                resized = true
+            }
+            
+            self.ssidField?.stringValue = value.wifiDetails.ssid ?? localizedString("Unknown")
+            if let v = value.wifiDetails.RSSI {
+                self.ssidField?.stringValue += " (\(v))"
+            }
+            self.standardField?.stringValue = value.wifiDetails.standard ?? localizedString("Unknown")
+            self.channelField?.stringValue = value.wifiDetails.channel ?? localizedString("Unknown")
+            
+            var rssi = localizedString("Unknown")
+            if let v = value.wifiDetails.RSSI {
+                rssi = "\(v) dBm"
+            }
+            var noise = localizedString("Unknown")
+            if let v = value.wifiDetails.noise {
+                noise = "\(v) dBm"
+            }
+            
+            let number = value.wifiDetails.channelNumber ?? localizedString("Unknown")
+            let band = value.wifiDetails.channelBand ?? localizedString("Unknown")
+            let width = value.wifiDetails.channelWidth ?? localizedString("Unknown")
+            self.channelField?.toolTip = "RSSI: \(rssi)\nNoise: \(noise)\nChannel number: \(number)\nChannel band: \(band)\nChannel width: \(width)\n"
+        } else {
+            if self.ssidView?.superview != nil {
+                self.ssidField?.stringValue = localizedString("Unavailable")
+                self.ssidView?.removeFromSuperview()
+                resized = true
+            }
+            if self.standardField?.superview != nil {
+                self.standardField?.stringValue = localizedString("Unavailable")
+                self.standardView?.removeFromSuperview()
+                resized = true
+            }
+            if self.channelView?.superview != nil {
+                self.channelField?.stringValue = localizedString("Unavailable")
+                self.channelView?.removeFromSuperview()
+                resized = true
+            }
+        }
+        
+        var privateIP = localizedString("Unknown")
+        if let v4 = value.laddr.v4, !v4.isEmpty {
+            privateIP = v4
+        } else if let v6 = value.laddr.v6, !v6.isEmpty {
+            privateIP = v6
+        }
+        if self.localIPField?.stringValue != privateIP {
+            self.localIPField?.stringValue = privateIP
+        }
+        
+        if let view = self.publicIPv4View {
+            if let addr = value.raddr.v4 {
+                if view.superview == nil {
+                    self.addressView?.addArrangedSubview(view)
+                    resized = true
+                }
+                var ip = addr
+                if let cc = value.raddr.countryCode, !cc.isEmpty {
+                    if self.emojiCCState, let flag = countryFlag(cc) {
+                        ip += " \(flag)"
+                    } else {
+                        ip += " (\(cc))"
+                    }
+                    self.publicIPv4Field?.toolTip = cc
+                }
+                if self.publicIPv4Field?.stringValue != ip {
+                    self.publicIPv4Field?.stringValue = ip
+                }
+            } else if view.superview != nil {
+                view.removeFromSuperview()
+                resized = true
+                self.publicIPv4Field?.stringValue = localizedString("Unknown")
+            }
+        }
+        
+        if let view = self.publicIPv6View {
+            if let addr = value.raddr.v6 {
+                if view.superview == nil {
+                    self.addressView?.addArrangedSubview(view)
+                    resized = true
+                }
+                var ip = addr
+                if let cc = value.raddr.countryCode {
+                    if self.emojiCCState, let flag = countryFlag(cc) {
+                        ip += " \(flag)"
+                    } else {
+                        ip += " (\(cc))"
+                    }
+                    self.publicIPv6Field?.toolTip = cc
+                }
+                if self.publicIPv6Field?.stringValue != ip {
+                    self.publicIPv6Field?.stringValue = ip
+                }
+            } else if view.superview != nil {
+                view.removeFromSuperview()
+                resized = true
+                self.publicIPv6Field?.stringValue = localizedString("Unknown")
+            }
+        }
+        
+        if self.interfaceDetailsState {
+            if !value.dns.isEmpty {
+                let servers = value.dns.joined(separator: "\n")
+                
+                if self.dnsServersField == nil || value.dns.count != self.dnsServersField?.stringValue.split(separator: "\n").count {
+                    if let view = self.dnsServersView {
+                        view.removeFromSuperview()
+                    }
+                    let view = popupRow(self.interfaceView, title: "\(localizedString("DNS Server")):", value: servers, multiline: true)
+                    self.dnsServersField = view.1
+                    self.dnsServersView = view.2
+                    self.dnsServersField?.isSelectable = true
+                }
+                
+                if self.dnsServersField?.stringValue != servers {
+                    self.dnsServersField?.stringValue = servers
+                }
+                
+                resized = true
+            } else if let view = self.dnsServersView {
+                view.removeFromSuperview()
+                resized = true
+            }
+        }
+        
+        self.statusField?.setStatus(value.status)
+        
+        if resized {
+            self.recalculateHeight()
+        }
+        
+        self.chart?.display()
+    }
+    
+    public func connectivityCallback(_ value: Network_Connectivity?) {
+        if self.latency.count >= 90 {
+            self.latency.remove(at: 0)
+        }
+        self.latency.append(value?.latency ?? 0)
+        
+        if self.jitter.count >= 90 {
+            self.jitter.remove(at: 0)
+        }
+        self.jitter.append(value?.jitter ?? 0)
+        
+        self.apply(value, to: self.connectivityCache, render: self.renderConnectivity)
+    }
+    
+    private func renderConnectivity(_ value: Network_Connectivity?) {
+        var latency = localizedString("Unknown")
+        var jitter = localizedString("Unknown")
+        
+        if let v = value {
+            if v.status && !self.latency.isEmpty {
+                latency = "\((self.latency.reduce(0, +) / Double(self.latency.count)).rounded(toPlaces: 2)) ms"
+            }
+            if v.status && !self.jitter.isEmpty {
+                jitter = "\((self.jitter.reduce(0, +) / Double(self.jitter.count)).rounded(toPlaces: 2)) ms"
+            }
+        }
+        self.latencyField?.stringValue = latency
+        self.jitterField?.stringValue = jitter
+        
+        self.connectivityField?.setStatus(value?.status)
+    }
+    
+    public func processCallback(_ list: [Network_Process]) {
+        DispatchQueue.main.async(execute: {
+            if !(self.window?.isVisible ?? false) && self.processesInitialized {
+                return
+            }
+            let list = list.map{ $0 }
+            
+            // Smooth every row's numbers so values glide instead of flickering
+            let alpha = self.smoothingAlpha
+            var smoothed: [Network_Process] = []
+            for process in list {
+                let previous = self.smoothedProcessTraffic[process.pid] ?? (Double(process.download), Double(process.upload))
+                let download = previous.0 * (1 - alpha) + Double(process.download) * alpha
+                let upload = previous.1 * (1 - alpha) + Double(process.upload) * alpha
+                self.smoothedProcessTraffic[process.pid] = (download, upload)
+                var copy = process
+                copy.download = Int(download.rounded())
+                copy.upload = Int(upload.rounded())
+                smoothed.append(copy)
+            }
+            if self.smoothedProcessTraffic.count > 256 {
+                let livePids = Set(list.map{ $0.pid })
+                self.smoothedProcessTraffic = self.smoothedProcessTraffic.filter{ livePids.contains($0.key) }
+            }
+            
+            self.updateProcessSum(smoothed)
+            if smoothed.isEmpty {
+                self.processes?.setPlaceholder(localizedString("No network activity"))
+                self.processesInitialized = true
+                return
+            }
+            if smoothed.count != self.processes?.count { self.processes?.clear() }
+            
+            for i in 0..<smoothed.count {
+                let process = smoothed[i]
+                let upload = Units(bytes: Int64(process.upload)).getReadableSpeed(base: self.base, unit: self.speedUnit)
+                let download = Units(bytes: Int64(process.download)).getReadableSpeed(base: self.base, unit: self.speedUnit)
+                self.processes?.set(i, process, [download, upload])
+            }
+            
+            self.processesInitialized = true
+        })
+    }
+    
+    private func updateProcessSum(_ list: [Network_Process]) {
+        var sumDownload: Int64 = 0
+        var sumUpload: Int64 = 0
+        list.forEach{
+            sumDownload += Int64($0.download)
+            sumUpload += Int64($0.upload)
+        }
+        
+        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+        let sum = NSMutableAttributedString()
+        sum.append(NSAttributedString(string: "Σ ↓ \(Units(bytes: sumDownload).getReadableSpeed(base: self.base, unit: self.speedUnit))  ", attributes: [
+            .foregroundColor: self.downloadColor,
+            .font: font
+        ]))
+        sum.append(NSAttributedString(string: "↑ \(Units(bytes: sumUpload).getReadableSpeed(base: self.base, unit: self.speedUnit))", attributes: [
+            .foregroundColor: self.uploadColor,
+            .font: font
+        ]))
+        self.processSumField?.attributedStringValue = sum
+    }
+    
+    public func resetConnectivityView() {
+        self.connectivityField?.setStatus(nil)
+    }
+    
+    // MARK: - Settings
+    
+    public override func settings() -> NSView? {
+        let view = SettingsContainerView()
+        
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Keyboard shortcut"), component: KeyboardShartcutView(
+                callback: self.setKeyboardShortcut,
+                value: self.keyboardShortcut
+            ))
+        ]))
+        
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Color of download"), component: colorSelectView(
+                action: #selector(self.toggleDownloadColor),
+                items: SColor.allColors,
+                selected: self.downloadColorState.key
+            )),
+            PreferencesRow(localizedString("Color of upload"), component: colorSelectView(
+                action: #selector(self.toggleUploadColor),
+                items: SColor.allColors,
+                selected: self.uploadColorState.key
+            ))
+        ]))
+        
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Reverse order"), component: switchView(
+                action: #selector(self.toggleReverseOrder),
+                state: self.reverseOrderState
+            ))
+        ]))
+        
+        self.chartPrefSection = PreferencesSection([
+            PreferencesRow(localizedString("Chart history"), component: selectView(
+                action: #selector(self.togglechartHistory),
+                items: LineChartHistory,
+                selected: "\(self.chartHistory)"
+            )),
+            PreferencesRow(localizedString("Main chart scaling"), component: selectView(
+                action: #selector(self.toggleChartScale),
+                items: Scale.allCases,
+                selected: self.chartScale.key
+            )),
+            PreferencesRow(localizedString("Scale value"), component: StepperInput(
+                self.chartFixedScale, range: NSRange(location: 1, length: 1023),
+                unit: self.chartFixedScaleSize.key, units: SizeUnit.allCases,
+                callback: self.toggleFixedScale, unitCallback: self.toggleFixedScaleSize
+            ))
+        ])
+        view.addArrangedSubview(self.chartPrefSection!)
+        self.chartPrefSection?.setRowVisibility(2, newState: self.chartScale == .fixed)
+        
+        view.addArrangedSubview(PreferencesSection([
+            PreferencesRow(localizedString("Public IP"), component: switchView(
+                action: #selector(self.togglePublicIP),
+                state: self.publicIPState
+            )),
+            PreferencesRow(localizedString("Show country code instead of emoji"), component: switchView(
+                action: #selector(self.toggleEmojiCC),
+                state: !self.emojiCCState
+            ))
+        ]))
+        
+        return view
+    }
+    
+    @objc private func toggleUploadColor(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String else { return }
+        self.uploadColorState = SColor.fromString(key, defaultValue: self.uploadColorState)
+        Store.shared.set(key: "\(self.title)_uploadColor", value: self.uploadColorState.key)
+        if let color = self.uploadColorState.additional as? NSColor {
+            self.processes?.setColor(1, color)
+            self.uploadColorView?.layer?.backgroundColor = color.cgColor
+            self.uploadStateView?.setColor(color)
+            self.chart?.setColors(out: color)
+        }
+    }
+    @objc private func toggleDownloadColor(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String else { return }
+        self.downloadColorState = SColor.fromString(key, defaultValue: self.downloadColorState)
+        Store.shared.set(key: "\(self.title)_downloadColor", value: self.downloadColorState.key)
+        if let color = self.downloadColorState.additional as? NSColor {
+            self.processes?.setColor(0, color)
+            self.downloadColorView?.layer?.backgroundColor = color.cgColor
+            self.downloadStateView?.setColor(color)
+            self.chart?.setColors(in: color)
+        }
+    }
+    @objc private func toggleReverseOrder(_ sender: NSControl) {
+        self.reverseOrderState = controlState(sender)
+        self.chart?.setReverseOrder(self.reverseOrderState)
+        Store.shared.set(key: "\(self.title)_reverseOrder", value: self.reverseOrderState)
+        self.display()
+    }
+    @objc private func togglechartHistory(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String, let value = Int(key) else { return }
+        self.chartHistory = value
+        Store.shared.set(key: "\(self.title)_chartHistory", value: value)
+        self.chart?.reinit(self.chartHistory)
+    }
+    @objc private func toggleChartScale(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String,
+              let value = Scale.allCases.first(where: { $0.key == key }) else { return }
+        self.chartScale = value
+        self.chart?.setScale(self.chartScale, Double(self.chartFixedScaleSize.toBytes(self.chartFixedScale)))
+        self.chartPrefSection?.setRowVisibility(2, newState: self.chartScale == .fixed)
+        Store.shared.set(key: "\(self.title)_chartScale", value: key)
+        self.display()
+    }
+    @objc private func togglePublicIP(_ sender: NSControl) {
+        self.publicIPState = controlState(sender)
+        Store.shared.set(key: "\(self.title)_publicIP", value: self.publicIPState)
+        
+        DispatchQueue.main.async(execute: {
+            if !self.publicIPState {
+                self.addressView?.removeFromSuperview()
+            } else if let view = self.addressView, view.superview == nil {
+                self.detailsStack?.addArrangedSubview(view)
+            }
+            self.recalculateHeight()
+        })
+    }
+    @objc private func toggleFixedScale(_ newValue: Int) {
+        self.chart?.setScale(self.chartScale, Double(self.chartFixedScaleSize.toBytes(newValue)))
+        Store.shared.set(key: "\(self.title)_chartFixedScale", value: newValue)
+    }
+    private func toggleFixedScaleSize(_ newValue: KeyValue_p) {
+        guard let newUnit = newValue as? SizeUnit else { return }
+        self.chartFixedScaleSize = newUnit
+        Store.shared.set(key: "\(self.title)_chartFixedScaleSize", value: self.chartFixedScaleSize.key)
+        self.display()
+    }
+    @objc private func toggleInterfaceDetails() {
+        self.interfaceDetailsState = !self.interfaceDetailsState
+        Store.shared.set(key: "\(self.title)_interfaceDetails", value: self.interfaceDetailsState)
+        
+        if !self.interfaceDetailsState {
+            self.standardView?.removeFromSuperview()
+            self.channelView?.removeFromSuperview()
+            self.interfaceSpeedView?.removeFromSuperview()
+            self.dnsServersView?.removeFromSuperview()
+        } else {
+            if let view = self.standardView, view.superview == nil && self.standardField?.stringValue != localizedString("Unavailable") {
+                self.interfaceView?.addArrangedSubview(view)
+            }
+            if let view = self.channelView, view.superview == nil && self.channelField?.stringValue != localizedString("Unavailable") {
+                self.interfaceView?.addArrangedSubview(view)
+            }
+            if let view = self.interfaceSpeedView, view.superview == nil {
+                self.interfaceView?.addArrangedSubview(view)
+            }
+            if let view = self.dnsServersView, view.superview == nil {
+                self.interfaceView?.addArrangedSubview(view)
+            }
+        }
+        
+        self.recalculateHeight()
+    }
+    @objc private func toggleEmojiCC(_ sender: NSControl) {
+        self.emojiCCState = !controlState(sender)
+        Store.shared.set(key: "\(self.title)_emojiCC", value: self.emojiCCState)
+    }
+    
+    // MARK: - helpers
+    
+    private func topValueView(_ view: NSView, title: String, color: NSColor) -> (NSView, NSTextField, NSTextField, ColorView) {
+        let topHeight: CGFloat = 30
+        let titleHeight: CGFloat = 15
+        
+        view.setAccessibilityElement(true)
+        view.toolTip = title
+        
+        let valueWidth = "0".widthOfString(usingFont: .monospacedDigitSystemFont(ofSize: 26, weight: .light)) + 5
+        let unitWidth = "KB/s".widthOfString(usingFont: .systemFont(ofSize: 13, weight: .light)) + 5
+        let topPartWidth = valueWidth + unitWidth
+        
+        let topView: NSView = NSView(frame: NSRect(
+            x: (view.frame.width-topPartWidth)/2,
+            y: (view.frame.height - topHeight - titleHeight)/2 + titleHeight,
+            width: topPartWidth,
+            height: topHeight
+        ))
+        
+        let valueField = LabelField(frame: NSRect(x: 0, y: 0, width: valueWidth, height: 30), "0")
+        valueField.font = NSFont.monospacedDigitSystemFont(ofSize: 26, weight: .light)
+        valueField.textColor = .textColor
+        valueField.alignment = .right
+        
+        let unitField = LabelField(frame: NSRect(x: valueField.frame.width, y: 4, width: unitWidth, height: 15), "KB/s")
+        unitField.font = NSFont.systemFont(ofSize: 13, weight: .light)
+        unitField.textColor = .labelColor
+        unitField.alignment = .left
+        
+        let titleWidth: CGFloat = title.widthOfString(usingFont: NSFont.systemFont(ofSize: 11, weight: .regular))+8
+        let iconSize: CGFloat = 12
+        let bottomWidth: CGFloat = titleWidth+iconSize
+        let bottomView: NSView = NSView(frame: NSRect(
+            x: (view.frame.width-bottomWidth)/2,
+            y: topView.frame.origin.y - titleHeight - 2,
+            width: bottomWidth,
+            height: titleHeight
+        ))
+        
+        let colorBlock: ColorView = ColorView(frame: NSRect(x: 0, y: 2, width: iconSize, height: iconSize), color: color, radius: 4)
+        let titleField = LabelField(frame: NSRect(x: iconSize, y: 0, width: titleWidth, height: titleHeight), title)
+        titleField.alignment = .center
+        titleField.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        
+        topView.addSubview(valueField)
+        topView.addSubview(unitField)
+        
+        bottomView.addSubview(colorBlock)
+        bottomView.addSubview(titleField)
+        
+        view.addSubview(topView)
+        view.addSubview(bottomView)
+        
+        return (topView, valueField, unitField, colorBlock)
+    }
+    
+    private func setUploadDownloadFields() {
+        let upload = Units(bytes: self.uploadValue).getReadableTuple(base: self.base, unit: self.speedUnit)
+        let download = Units(bytes: self.downloadValue).getReadableTuple(base: self.base, unit: self.speedUnit)
+        
+        self.uploadContainerView?.toolTip = "\(localizedString("Uploading")): \(upload.0)\(upload.1)"
+        self.downloadContainerView?.toolTip = "\(localizedString("Downloading")): \(download.0)\(download.1)"
+        
+        var valueWidth = "\(upload.0)".widthOfString(usingFont: .systemFont(ofSize: 26, weight: .light)) + 5
+        var unitWidth = upload.1.widthOfString(usingFont: .systemFont(ofSize: 13, weight: .light)) + 5
+        var topPartWidth = valueWidth + unitWidth
+        
+        self.uploadView?.setFrameSize(NSSize(width: topPartWidth, height: self.uploadView!.frame.height))
+        self.uploadView?.setFrameOrigin(NSPoint(x: ((self.frame.width/2)-topPartWidth)/2, y: self.uploadView!.frame.origin.y))
+        
+        self.uploadValueField?.setFrameSize(NSSize(width: valueWidth, height: self.uploadValueField!.frame.height))
+        self.uploadValueField?.stringValue = "\(upload.0)"
+        self.uploadUnitField?.setFrameSize(NSSize(width: unitWidth, height: self.uploadUnitField!.frame.height))
+        self.uploadUnitField?.setFrameOrigin(NSPoint(x: self.uploadValueField!.frame.width, y: self.uploadUnitField!.frame.origin.y))
+        self.uploadUnitField?.stringValue = upload.1
+        
+        valueWidth = "\(download.0)".widthOfString(usingFont: .systemFont(ofSize: 26, weight: .light)) + 5
+        unitWidth = download.1.widthOfString(usingFont: .systemFont(ofSize: 13, weight: .light)) + 5
+        topPartWidth = valueWidth + unitWidth
+        
+        self.downloadView?.setFrameSize(NSSize(width: topPartWidth, height: self.downloadView!.frame.height))
+        self.downloadView?.setFrameOrigin(NSPoint(x: ((self.frame.width/2)-topPartWidth)/2, y: self.downloadView!.frame.origin.y))
+        
+        self.downloadValueField?.setFrameSize(NSSize(width: valueWidth, height: self.downloadValueField!.frame.height))
+        self.downloadValueField?.stringValue = "\(download.0)"
+        self.downloadUnitField?.setFrameSize(NSSize(width: unitWidth, height: self.downloadUnitField!.frame.height))
+        self.downloadUnitField?.setFrameOrigin(NSPoint(x: self.downloadValueField!.frame.width, y: self.downloadUnitField!.frame.origin.y))
+        self.downloadUnitField?.stringValue = download.1
+        
+        self.uploadStateView?.setState(self.uploadValue != 0)
+        self.downloadStateView?.setState(self.downloadValue != 0)
+    }
+    
+    @objc private func refreshPublicIP() {
+        NotificationCenter.default.post(name: .refreshPublicIP, object: nil, userInfo: nil)
+        self.localIPField?.stringValue = localizedString("Updating...")
+        self.publicIPv4Field?.stringValue = localizedString("Updating...")
+        self.publicIPv6Field?.stringValue = localizedString("Updating...")
+    }
+    
+    @objc private func resetTotalNetworkUsage() {
+        NotificationCenter.default.post(name: .resetTotalNetworkUsage, object: nil, userInfo: nil)
+        self.totalUploadField?.stringValue = Units(bytes: 0).getReadableMemory()
+        self.totalDownloadField?.stringValue = Units(bytes: 0).getReadableMemory()
+        self.lastReset = Date()
+    }
+    
+    @objc private func resetTotalNetworkUsageCallback() {
+        self.lastReset = Date()
+    }
+}
